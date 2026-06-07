@@ -1,62 +1,60 @@
 import express from 'express';
+import dotenv from 'dotenv';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import mongoose from 'mongoose';
 
-// 1. استدعي dotenv وشغله فوراً في أول سطر خالص قبل أي import تاني لحماية السيستم
-import dotenv from 'dotenv';
+// Import routes
+import authRoutes from './routes/auth.js';
+import productRoutes from './routes/products.js';
+import cartRoutes from './routes/cart.js';
+import orderRoutes from './routes/orders.js';
+import userRoutes from './routes/users.js';
+import categoryRoutes from './routes/categories.js';
 
-// 2. دلوقتي تقدر تستورد ملفات الـ config وإنت مطمن إن الـ .env مقروء وزي الفل
-import connectDB from './src/confige/db.js'; // 
-import { connectRedis } from './src/confige/redis.js';
-import globalErrorHandler from './src/middleware/errorMiddleware.js';
-import AppError from './src/utils/appError.js';
-import seedSuperAdmin from './src/scripts/seedAdmin.js';
-import authRoutes from "./src/features/auth/auth.routes.js"
-import productRoutes from "./src/features/products/product.routes.js"
-import cartRoutes from './src/features/cart/cart.routes.js'; // 👈 السطر الجديد
-import orderRoutes from './src/features/orders/order.routes.js'; // 👈 سطر جديد
-import adminRoutes from "./src/features/admin/admin.routes.js"
-import couponRoutes from "./src/features/coupons/coupon.routes.js"
-
-
-// إنشاء تطبيق Express
-const app = express();
+// Import middleware
+import { errorHandler } from './middleware/errorHandler.js';
 
 dotenv.config();
-// الاتصال بقواعد البيانات
-connectDB().then(() => {
-    seedSuperAdmin(); // هيشتغل ويتأكد من الحساب في الخلفية
-});;
 
+const app = express();
 
-connectRedis();
-
-// الـ Middlewares الأساسية
-app.use(cors({ 
-    origin: 'http://localhost:5173', // فرونت اند Vite
-    credentials: true 
-})); 
-
-
-app.use(express.json());
+// Middleware
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true
+}));
 
-// Base Route للتأكد إن السيرفر شغال
-app.use("/api/v1/auth" , authRoutes)
-app.use("/api/v1/products" , productRoutes)
-app.use('/api/v1/cart', cartRoutes); // 
-app.use('/api/v1/orders', orderRoutes); 
-app.use('/api/v1/admin', adminRoutes);
-app.use('/api/v1/coupons', couponRoutes)
-// التعامل مع الـ Routes اللي مش موجودة
-app.use((req, res, next) => {
-    next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
+// Database Connection
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/ecommerce')
+  .then(() => console.log('✅ MongoDB Connected'))
+  .catch((err) => console.error('❌ MongoDB Error:', err));
+
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/cart', cartRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/categories', categoryRoutes);
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'Server is running ✅' });
 });
 
-// تشغيل المعالج المركزي للأخطاء
-app.use(globalErrorHandler);
+// Error handling middleware
+app.use(errorHandler);
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ message: 'Route not found' });
+});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-    console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
